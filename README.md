@@ -1,189 +1,130 @@
-# High-Frequency Trading Exchange System
+# High-Frequency Trading Exchange System (C++20)
 
-A zero-dynamic-allocation, cache-optimized C++20 matching engine with lock-free networking for sub-microsecond order processing.
+A cache-aware, zero-dynamic-allocation matching engine with lock-free queues, binary wire protocol support, and replication/validation tooling.
 
-## Overview
+## Why This Project
 
-This project implements a complete 5-phase HFT exchange system with strict performance and memory constraints:
-- **Zero dynamic allocation** after initialization
-- **Lock-free SPSC queues** for inter-thread communication
-- **Index-based memory management** with free-list recycling
-- **Cache-locality optimized** data structures
-- **Portable across macOS and Linux** with conditional compilation
+This repository is a systems-focused implementation of a low-latency exchange core designed around deterministic memory and predictable performance.
 
-Target throughput: **600k+ orders/second** on modern hardware.
+Key constraints:
+- Zero dynamic allocation after initialization
+- Index-based memory ownership and recycling
+- Lock-free SPSC communication primitives
+- Cross-platform support (macOS/Linux) with compile-time guards
+
+Observed benchmark in this repo: ~617k orders/sec on macOS arm64 (details in Performance section).
+
+## Project Status
+
+- Completed: Phases 1 through 5
+- Build: Passing
+- Tests: Passing (functional, protocol, replication, stress)
+
+## Repository Layout
+
+- `core/include/`: core types, order book, matching engine, memory pool, protocol, queues
+- `core/src/`: core implementation files
+- `apps/passive_engine/`: passive replication app
+- `apps/market_maker/`: market-making order flow generator
+- `tests/`: latency, protocol, functional, stress, and lifecycle tests
+- `CMakeLists.txt`: top-level build configuration
 
 ## Architecture
 
-### Phase 1: Core Data Structures
-- **Order Book** (`core/include/order_book.h`): Price-level management with FIFO ordering via index-linked lists
-- **Matching Engine** (`core/include/matching_engine.h`): Order routing and execution callbacks
-- **Memory Pool** (`core/include/memory_pool.h`): O(1) allocation/release with free-list tracking
-- **Type System** (`core/include/types.h`): Quantity, Price, OrderId as strong integer types
+### Phase 1: Core Engine
+- `core/include/order_book.h`: price-level container with FIFO per level
+- `core/include/matching_engine.h`: routes Add/Cancel/Modify and emits executions
+- `core/include/memory_pool.h`: O(1) index allocation/release via free list
+- `core/include/types.h`: fixed-width domain types and snapshot structs
 
-### Phase 2: Performance Validation
-- **Lock-Free Queue Latency Test** (`tests/lockfree_queue_latency_test.cpp`): Measures message latency in cycles
-  - Result: **107,592 cycles/message** (macOS arm64)
-  
-### Phase 3: Network Integration
-- **TCP Gateway** (`core/include/epoll_server.h`): Non-blocking socket server (Linux via epoll)
-- **UDP Multicast** (`core/include/udp_multicast.h`): Market data broadcast
-- **Binary Wire Protocol** (`core/include/protocol.h`): Order and execution serialization with magic numbers
+### Phase 2: Latency Validation
+- `tests/lockfree_queue_latency_test.cpp`: lock-free queue benchmark
+- Timing source:
+  - macOS arm64: `mach_absolute_time()`
+  - x86/Linux: `__rdtsc()`
+
+### Phase 3: Network Layer
+- `core/include/protocol.h`: binary wire encode/decode for orders/executions
+- `core/include/epoll_server.h`: Linux epoll TCP ingress
+- `core/include/udp_multicast.h`: UDP multicast publish/receive
 
 ### Phase 4: Passive Replication
-- **Passive Engine** (`apps/passive_engine/main.cpp`): UDP multicast listener replicating order book state
-- **Replication Test** (`tests/passive_engine_replication_test.cpp`): Validates 100k orders produce identical state
-  - Result: **100% book state accuracy**
+- `apps/passive_engine/main.cpp`: consumes multicast order flow and replays locally
+- `tests/passive_engine_replication_test.cpp`: compares primary vs passive snapshots
 
-### Phase 5: Market Making & Stress Testing
-- **Market Maker Bot** (`apps/market_maker/main.cpp`): TCP client sending bid/ask quotes with realistic dynamics
-- **Wire Protocol Test**: Validates encode/decode round-trip (3 subtests, 1000+ sequences)
-- **Functional Test** (`tests/market_maker_functional_test.cpp`): 1000 orders → 716 executions
-- **Stress Test** (`tests/order_book_stress_test.cpp`): 50k orders → **617,283 orders/second**
-- **Cancel/Replace Test** (`tests/cancel_replace_test.cpp`): 100 rapid sequences (add→modify→cancel)
+### Phase 5: Market Making + Accuracy Expansion
+- `apps/market_maker/main.cpp`: quote sender over TCP
+- `tests/wire_protocol_test.cpp`: protocol correctness and sequence checks
+- `tests/market_maker_functional_test.cpp`: end-to-end behavior on 1000 orders
+- `tests/order_book_stress_test.cpp`: throughput run on 50k orders
+- `tests/cancel_replace_test.cpp`: repeated add/modify/cancel lifecycle checks
 
-## Build Instructions
+## Build
 
 ### Requirements
-- **CMake** 3.20+
-- **C++20 compiler** (Apple Clang 15.0+ on macOS, GCC 10+ on Linux)
-- **macOS** 11+ or **Linux** with epoll support
+- CMake 3.20+
+- C++20 compiler (Apple Clang 15+, GCC 10+, or equivalent)
 
-### Build
+### Configure and Compile
+
 ```bash
-cd /Users/sarangbhide/exchange
-mkdir -p build && cd build
-cmake ..
-cmake --build .
+cmake -S . -B build
+cmake --build build -j
 ```
 
-### Available Targets
-- **exchange_core**: Header-only matching engine library
-- **exchange_utils**: Header-only utilities (timing, queues)
-- **exchange_network**: Header-only protocol and sockets
-- **market_maker**: TCP bot application
-- **passive_engine**: UDP multicast receiver application
-- **Tests**: 
-  - `lockfree_queue_latency_test`
-  - `passive_engine_replication_test`
-  - `wire_protocol_test`
-  - `market_maker_functional_test`
-  - `order_book_stress_test`
-  - `cancel_replace_test`
-
-## Running Tests
+## Run Tests
 
 ```bash
-# Wire protocol validation
-./build/tests/wire_protocol_test
-# Expected: PASSED (encode_decode_order, encode_execution, multiple_order_sequence)
-
-# Functional correctness
-./build/tests/market_maker_functional_test
-# Expected: 1000 orders processed, 716 executions, 191 resting orders
-
-# Rapid order lifecycle
-./build/tests/cancel_replace_test
-# Expected: 100 sequences × 7 operations = 700 total operations
-
-# Performance benchmark
-./build/tests/order_book_stress_test
-# Expected: 50k orders in ~81ms = 617k orders/second
-
-# Latency measurement
 ./build/tests/lockfree_queue_latency_test
-# Expected: ~107k cycles/message (macOS arm64)
-
-# Replication accuracy
 ./build/tests/passive_engine_replication_test
-# Expected: 100k orders → identical bid/ask snapshots
+./build/tests/wire_protocol_test
+./build/tests/market_maker_functional_test
+./build/tests/order_book_stress_test
+./build/tests/cancel_replace_test
 ```
 
-## Performance Metrics
+## Performance Snapshot
 
-| Test | Result | Environment |
-|------|--------|-------------|
-| Order book throughput | 617k orders/sec | macOS arm64 (50k orders, 81ms) |
-| Lock-free queue latency | 107.6k cycles/msg | macOS arm64 (1M messages) |
-| Replication accuracy | 100% | 100k deterministic orders |
-| Execution rate | 77.6% | 1000 orders → 716 fills |
-| Memory allocation | Zero | After initialization phase |
+Measured on macOS arm64 in current workspace runs:
 
-## Technical Details
+| Metric | Result |
+|---|---|
+| Order book throughput | 617,283 orders/sec (50k orders in 81 ms) |
+| Lock-free queue latency | 107,592 cycles/message (1M messages) |
+| Replication accuracy | 100% snapshot match (100k deterministic orders) |
+| Functional execution rate | 716 executions out of 1000 generated orders |
 
-### Memory Model
-- **Pre-allocated arrays**: Order, execution, and state buffers sized at compile-time
-- **Free-list recycling**: O(1) index reuse via linked list of unused slots
-- **No dynamic allocation**: All memory acquired during `MatchingEngine` initialization
-- **Cache locality**: Contiguous index-based storage minimizes pointer chasing
+These numbers are hardware/compiler dependent and should be treated as indicative, not guaranteed.
 
-### Timing (Platform-Specific)
-- **macOS arm64**: `mach_absolute_time()` for nanosecond precision
-- **x86/Linux**: `__rdtsc()` for cycle-level measurement
-- **Conditional compilation**: `#ifdef __APPLE__`, `#ifdef __linux__`
-
-### Wire Protocol
-- **Order message**: Magic (0x584F5244) + version + action + side + orderId + price + quantity
-- **Execution message**: Magic (0x58455843) + sequence + aggressor + resting + quantity + price
-- **Validation**: Magic number and field round-trip verification in all serialization paths
-
-### Order Matching
-- **Order Book**: Dual `std::map<Price, PriceLevel>` (bids descending, asks ascending)
-- **Price Level**: FIFO queue via index-linked list (prev/next in Order struct)
-- **Matching**: Full quantity match first, then partial if aggressive order exceeds level depth
-- **Callbacks**: ExecutionHandler template for custom fill processing
-
-## Platform Support
+## Platform Notes
 
 | Feature | macOS | Linux |
-|---------|-------|-------|
-| Latency benchmark | ✓ | ✓ |
-| TCP gateway | ✗ (epoll) | ✓ |
-| UDP multicast | ✓ | ✓ |
-| Order book | ✓ | ✓ |
-| Market maker bot | ✓ | ✓ |
+|---|---|---|
+| Core matching engine | Yes | Yes |
+| UDP multicast utilities | Yes | Yes |
+| epoll TCP server | No | Yes |
+| Benchmark/test suite | Yes | Yes |
 
-*epoll_server only builds on Linux with `__linux__` guard; macOS can use alternative I/O (kqueue with minor changes)*
+`epoll_server.h` is guarded for Linux (`__linux__`).
 
-## Key Files
+## Public Repo Notes
 
-**Core Engine**
-- [core/include/types.h](core/include/types.h) — Type definitions
-- [core/include/order.h](core/include/order.h) — Order struct
-- [core/include/order_book.h](core/include/order_book.h) — Matching engine
-- [core/include/matching_engine.h](core/include/matching_engine.h) — Order dispatcher
-- [core/include/memory_pool.h](core/include/memory_pool.h) — Index-based allocator
+- This is an educational and engineering project, not production trading infrastructure.
+- Not financial advice. Do not use as-is for live market deployment.
+- If you publish this repo, add a `LICENSE` file so usage terms are explicit.
 
-**Network**
-- [core/include/protocol.h](core/include/protocol.h) — Wire format encoder/decoder
-- [core/include/epoll_server.h](core/include/epoll_server.h) — Linux TCP server
-- [core/include/udp_multicast.h](core/include/udp_multicast.h) — Market data broadcaster
-- [core/include/lockfree_queue.h](core/include/lockfree_queue.h) — SPSC ring buffer
+## Useful Entry Points
 
-**Applications**
-- [apps/market_maker/main.cpp](apps/market_maker/main.cpp) — TCP order bot
-- [apps/passive_engine/main.cpp](apps/passive_engine/main.cpp) — UDP receiver replica
+- `core/include/order_book.h`
+- `core/include/matching_engine.h`
+- `core/include/protocol.h`
+- `apps/market_maker/main.cpp`
+- `apps/passive_engine/main.cpp`
 
-**Tests**
-- [tests/wire_protocol_test.cpp](tests/wire_protocol_test.cpp) — Serialization validation
-- [tests/market_maker_functional_test.cpp](tests/market_maker_functional_test.cpp) — 1000-order scenarios
-- [tests/order_book_stress_test.cpp](tests/order_book_stress_test.cpp) — 50k-order throughput
-- [tests/cancel_replace_test.cpp](tests/cancel_replace_test.cpp) — Rapid lifecycle operations
+## Next Improvements
 
-## Design Principles
-
-1. **Zero-Copy**: All data passed by index or const reference
-2. **Deterministic**: Pre-allocated memory eliminates GC pauses
-3. **Lock-Free**: SPSC queues for thread safety without mutexes
-4. **Cache-Aware**: Index-based linked lists over pointer chasing
-5. **Portable**: Conditional compilation shields platform differences
-6. **Tested**: 6 test suites covering functional, performance, and edge cases
-
-## Future Enhancements
-
-- [ ] Multi-asset order books (symbol-to-book map)
-- [ ] REST API gateway with JSON serialization
-- [ ] Risk controls (position limits, price bands)
-- [ ] Persistent order log to disk (memory-mapped files)
-- [ ] Linux epoll integration with kqueue fallback
-- [ ] Order book snapshot diffing for network reduction
+- Multi-symbol books and symbol routing
+- Risk checks (price bands, position limits)
+- Persistence/recovery (append-only log + snapshot)
+- kqueue-based ingress path for macOS parity with epoll
+- Incremental multicast snapshot/delta dissemination
