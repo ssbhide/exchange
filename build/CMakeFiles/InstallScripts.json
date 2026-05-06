@@ -1,0 +1,14 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/sarangbhide/exchange/build/cmake_install.cmake",
+		"/Users/sarangbhide/exchange/build/core/cmake_install.cmake",
+		"/Users/sarangbhide/exchange/build/network/cmake_install.cmake",
+		"/Users/sarangbhide/exchange/build/apps/cmake_install.cmake",
+		"/Users/sarangbhide/exchange/build/apps/passive_engine/cmake_install.cmake",
+		"/Users/sarangbhide/exchange/build/apps/market_maker/cmake_install.cmake",
+		"/Users/sarangbhide/exchange/build/utils/cmake_install.cmake",
+		"/Users/sarangbhide/exchange/build/tests/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
