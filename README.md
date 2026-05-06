@@ -14,12 +14,6 @@ Key constraints:
 
 Observed benchmark in this repo: ~617k orders/sec on macOS arm64 (details in Performance section).
 
-## Project Status
-
-- Completed: Phases 1 through 5
-- Build: Passing
-- Tests: Passing (functional, protocol, replication, stress)
-
 ## Repository Layout
 
 - `core/include/`: core types, order book, matching engine, memory pool, protocol, queues
@@ -106,12 +100,6 @@ These numbers are hardware/compiler dependent and should be treated as indicativ
 | Benchmark/test suite | Yes | Yes |
 
 `epoll_server.h` is guarded for Linux (`__linux__`).
-
-## Public Repo Notes
-
-- This is an educational and engineering project, not production trading infrastructure.
-- Not financial advice. Do not use as-is for live market deployment.
-- If you publish this repo, add a `LICENSE` file so usage terms are explicit.
 
 ## Useful Entry Points
 
